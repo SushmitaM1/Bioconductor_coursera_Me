@@ -1,0 +1,201 @@
+---
+title: "R Notebook: Quiz 3 Bioconductor Coursera"
+output: html_notebook
+author: "Sushmita M"
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+##Q1:
+
+```{r}
+library(Biobase)
+library(ALL)
+#library(hgu95av2.db)    #not using for quiz(will use biomaRt), used in lecture
+data(ALL)
+```
+
+#5th column is 5th sample, need all rows (expression of all genes)
+
+```{r}
+mean(exprs(ALL)[, 5]) 
+```
+
+##Q2:Using Ensembl 75, annotate each feature of the ALL dataset with the Ensembl gene id. How many probesets (features) 
+##are annotated with more than one Ensembl gene id?
+#need the archived hg19 build of human genome, Ensemble 75
+
+```{r}
+library(biomaRt)     #for annotating
+mart <- useMart(host="feb2014.archive.ensembl.org", biomart = "ENSEMBL_MART_ENSEMBL")
+
+ensembl <- useDataset("hsapiens_gene_ensembl", mart)
+
+feature_ids <-featureNames(ALL)      #features to be annotated
+
+
+#getBM() requires proper attributes and filters, look up the attributePages(ensembl)
+attributePages(ensembl)
+
+#pick the required attributes (included chromosome_name for Q3), x is annotated features 
+x <- getBM(attributes = c("ensembl_gene_id", "affy_hg_u95av2", "chromosome_name"), filters = "affy_hg_u95av2", values = feature_ids, mart = ensembl)
+
+```
+
+#need probesets(features) annotated with more than one Ensembl gene id 
+```{r}
+y <- as.data.frame(table(x$affy_hg_u95av2))
+
+dim(y[y$Freq >1, ])    
+```
+
+
+##Q3: How many probesets (Affymetrix IDs) are annotated with one or more 
+
+```{r}
+##genes on the autosomes (chromosomes 1 to 22)
+q3 <- x[x$chromosome_name %in% 1:22, ]      #get the rows with autosomes(1-22)
+
+```
+#get frequency of probsets
+```{r}
+q3_freq <- as.data.frame(table(q3$affy_hg_u95av2)) 
+
+dim(q3_freq[q3_freq$Freq > 0, ])     #probsets annotated with one or more Ensembl gene id on autosomes  
+```
+
+
+##Q4:What is the mean value of the Methylation channel across the features for sample “5723646052_R04C01”?
+##Use the MsetEx dataset from the minfiData package
+
+```{r}
+library(minfiData)
+#BiocManager::install("MsetEx")
+#library(MsetEx)
+data("MsetEx")
+MsetEx
+head(getMeth(MsetEx))                   #getMeth() gets the methylation channel 
+```
+
+“5723646052_R04C01” is in 2nd column hence mean on meth of 2nd column
+```{r}
+mean(getMeth(MsetEx)[ , 2])
+```
+
+##Q5:GEOquery
+
+```{r}
+library(GEOquery)
+q5geolist <- getGEO("GSE788")   #getGeo() for accession#GSE788 as asked in question, output is a list, here of length 1    
+q5data <- q5geolist[[1]]        #data is in 1st object of list
+```
+
+#column 2 is the sample GSM9024 whose expression mean is asked in question
+```{r}
+mean(exprs(q5data)[,2]) 
+```
+
+##Q6: What is the average of the average length across the samples in the expriment? In airway dataset
+
+```{r}
+
+library(SummarizedExperiment)
+library(airway)
+
+data("airway")
+```
+
+6th column in colData is avgLength whose mean is asked in ques
+
+```{r}
+colData(airway)
+mean(colData(airway)[, 6])  
+```
+
+##Q7: What is the number of Ensembl genes which have a count of 1 read or more in sample SRR1039512?
+
+```{r}
+counts_sample3 <- assay(airway, "counts")[, 3]     #3rd column is the required sample
+
+q7 <- counts_sample3>0
+```
+Above output is a boolean, so add up all 1s (Trues)
+
+```{r}
+sum(q7)
+```
+
+##Q8: The airway dataset contains more than 64k features. How many of these features overlaps with transcripts on the autosomes (chromosomes 1-22) as represented by the TxDb.Hsapiens.UCSC.hg19.knownGene package?
+
+Clarification: A feature has to overlap the actual transcript, not the intron of a transcript. So you will need to make sure that the transcript representation does not contain introns.
+```{r}
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+
+txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+
+exon_tx <- exonsBy(txdb, by = "tx")
+exon_txautos <- keepSeqlevels(exon_tx, c(paste("chr", 1:22, sep = "")), pruning.mode = "coarse")
+
+stylefrom <- seqlevelsStyle(txdb)
+seqlevelsStyle(rowRanges(airway)) <- stylefrom
+```
+
+```{r}
+q8_overlap <- subsetByOverlaps(airway, exon_txautos)
+q8_overlap           #dimension rows are the number of features overlapping
+```
+
+##Q9:  For sample SRR1039508, how big a percentage (expressed as a number between 0 and 1) of the total reads in the airway dataset for that sample, are part of a feature which overlaps an autosomal TxDb.Hsapiens.UCSC.hg19.knownGene transcript?
+
+```{r}
+counts_col1 <- assay(airway, "counts")[ , 1]    #1st column is for the required sample, total reads for the sample
+
+counts_col1overlap <- assay(q8_overlap, "counts")[, 1]   #reads part of feature which overlaps an autosomal TxDb
+
+```
+
+required fraction
+
+```{r}
+sum(counts_col1overlap)/sum(counts_col1)
+
+```
+
+##Q10: What is the median number of counts per feature (for sample SRR1039508) containing a H3K4me narrowPeak in their promoter (only features which overlap autosomal transcripts from TxDb.Hsapiens.UCSC.hg19.knownGene are considered)?
+Issue: Getting wrong answer. correct answer is 232.
+
+```{r}
+library(AnnotationHub)
+ah <- AnnotationHub()
+ah_hs <- subset(ah, species == "Homo sapiens")
+query_lunghistone <- query(ah_hs, c("E096", "H3K4me3"))
+lung_histone <- query_lunghistone[["AH30596"]]
+
+hist_autos <- keepSeqlevels(lung_histone, c(paste("chr", 1:22, sep = "")), pruning.mode = "coarse")
+
+runval <- runValue(seqnames(q8_overlap))
+runvalunlist <- as.character(unlist(runval))
+
+strand <- runValue(strand(q8_overlap))
+strand <- as.character(unlist(strand))
+
+ends=sapply(end(q8_overlap),function(d){return(d[length(d)])})
+
+starts=sapply(start(q8_overlap),function(d){return(d[1])})
+
+gr <- GRanges(seqnames = runvalunlist ,IRanges(starts, ends), strand = strand)
+
+proms <- promoters(gr)
+
+q10 <- subsetByOverlaps(q8_overlap, proms)
+
+final <- subsetByOverlaps(q10, hist_autos)
+
+
+```
+
+
+```{r}
+median(assay(final, "counts")[,1])
+```
+
