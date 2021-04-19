@@ -162,7 +162,6 @@ sum(counts_col1overlap)/sum(counts_col1)
 ```
 
 ##Q10: What is the median number of counts per feature (for sample SRR1039508) containing a H3K4me narrowPeak in their promoter (only features which overlap autosomal transcripts from TxDb.Hsapiens.UCSC.hg19.knownGene are considered)?
-Issue: Getting wrong answer. correct answer is 232.
 
 ```{r}
 library(AnnotationHub)
